@@ -24,6 +24,8 @@ requires "karax#5f21dcd"
 
 requires "webdriver#429933a"
 
+requires "markdown"
+
 # Tasks
 
 task backend, "Compiles and runs the forum backend":

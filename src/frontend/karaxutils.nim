@@ -106,8 +106,11 @@ when defined(js):
   proc renderProfileUrl*(username: string): string =
     makeUri(fmt"/profile/{username}")
 
-  proc renderPostUrl*(threadId, postId: int): string =
-    makeUri(fmt"/t/{threadId}#{postId}")
+  proc renderPostUrl*(threadId, postId: int, page: int): string =
+    if page > 0:
+      makeUri(fmt"/t/{threadId}/s/{page}#{postId}")
+    else:
+      makeUri(fmt"/t/{threadId}#{postId}")
 
   proc parseUrlQuery*(query: string, result: var Table[string, string])
     {.deprecated: "use stdlib".} =

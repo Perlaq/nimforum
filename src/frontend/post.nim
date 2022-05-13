@@ -20,6 +20,8 @@ type
     info*: PostInfo
     moreBefore*: seq[int]
     replyingTo*: Option[PostLink]
+    isDeleted*: bool
+    position*: int
 
   PostLink* = object ## Used by profile
     creation*: int64
@@ -27,6 +29,7 @@ type
     threadId*: int
     postId*: int
     author*: Option[User] ## Only used for `replyingTo`.
+    postPosition*: int
 
 proc lastEdit*(post: Post): PostInfo =
   post.history[^1]
@@ -57,11 +60,16 @@ type
     # Information that only admins should see.
     email*: Option[string]
 
+proc postPerPage*(): int =
+  result = 20
+
 when defined(js):
   import karaxutils, threadlist
 
   proc renderPostUrl*(post: Post, thread: Thread): string =
-    renderPostUrl(thread.id, post.id)
+    let page = ((post.position) div postPerPage())*postPerPage()
+    renderPostUrl(thread.id, post.id, page)
 
   proc renderPostUrl*(link: PostLink): string =
-    renderPostUrl(link.threadId, link.postId)
+    let page = ((link.postPosition) div postPerPage())*postPerPage()
+    renderPostUrl(link.threadId, link.postId, page)

@@ -60,7 +60,9 @@ proc initialiseDb(admin: tuple[username, password, email: string],
       id integer primary key,
       name varchar(100) not null,
       description varchar(500) not null,
-      color varchar(10) not null
+      color varchar(10) not null,
+      threads integer not null default 0,
+      position integer not null default 0
     );
   """)
 
@@ -82,14 +84,16 @@ proc initialiseDb(admin: tuple[username, password, email: string],
     solution integer,
     isDeleted boolean not null default 0,
     isPinned boolean not null default 0,
+    lastPost integer not null default 0,
 
     foreign key (category) references category(id),
     foreign key (solution) references post(id)
   );""", [])
 
-  db.exec(sql"""
-    create unique index ThreadNameIx on thread (name);
-  """, [])
+  #db.exec(sql"""
+  #  create unique index ThreadNameIx on thread (name);
+  #""", [])
+  db.exec sql"create index ThreadDelCatPinIdx on thread(isDeleted, category, isPinned);"
 
   # -- Person
 
@@ -105,7 +109,9 @@ proc initialiseDb(admin: tuple[username, password, email: string],
     lastOnline timestamp not null default (DATETIME('now')),
     previousVisitAt timestamp not null default (DATETIME('now')),
     isDeleted boolean not null default 0,
-    needsPasswordReset boolean not null default 0
+    needsPasswordReset boolean not null default 0,
+    posts integer not null default 0,
+    threads integer not null default 0
   );""" % [userNameType, passwordType, emailType]), [])
 
   db.exec(sql"""
@@ -145,6 +151,7 @@ proc initialiseDb(admin: tuple[username, password, email: string],
       creation timestamp not null default (DATETIME('now')),
       isDeleted boolean not null default 0,
       replyingTo integer,
+      position integer not null,
 
       foreign key (thread) references thread(id),
       foreign key (author) references person(id),
@@ -152,6 +159,7 @@ proc initialiseDb(admin: tuple[username, password, email: string],
     );""", [])
 
   db.exec sql"create index PostByAuthorIdx on post(thread, author);"
+  db.exec sql"create index PostByCreationIdx on post(thread, position, creation);"
 
   db.exec(sql"""
     create table postRevision(

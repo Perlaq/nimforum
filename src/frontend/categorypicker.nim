@@ -29,7 +29,7 @@ when defined(js):
 
         let parsed = parseJson($response)
         let list = parsed.to(CategoryList)
-        list.categories.sort(cmpNames)
+        #list.categories.sort(cmpNames)
 
         if state.list.isSome:
           state.list.get().categories.add(list.categories)
@@ -61,7 +61,7 @@ when defined(js):
     result =
       proc (category: Category) =
         state.list.get().categories.add(category)
-        state.list.get().categories.sort(cmpNames)
+        #state.list.get().categories.sort(cmpNames)
         state.select(category.id)
         state.onAddCategory(category)
 

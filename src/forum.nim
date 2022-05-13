@@ -10,7 +10,7 @@ import
   os, strutils, times, md5, strtabs, math, db_sqlite,
   jester, asyncdispatch, asyncnet, sequtils,
   parseutils, random, rst, recaptcha, json, re, sugar,
-  strformat, logging
+  strformat, logging, markdown
 import cgi except setCookie
 import options
 
@@ -23,8 +23,8 @@ import frontend/[
 
 from htmlgen import tr, th, td, span, input
 
-when not declared(roSandboxDisabled):
-  {.error: "Your Nim version is vulnerable to a CVE. Upgrade it.".}
+#when not declared(roSandboxDisabled):
+#  {.error: "Your Nim version is vulnerable to a CVE. Upgrade it.".}
 
 type
   TCrud = enum crCreate, crRead, crUpdate, crDelete
@@ -175,11 +175,11 @@ proc incrementViews(threadId: int) =
   const query = sql"update thread set views = views + 1 where id = ?"
   exec(db, query, threadId)
 
-proc validateRst(c: TForumData, content: string): bool =
+proc validateMarkdown(c: TForumData, content: string): bool =
   result = true
   try:
-    discard rstToHtml(content)
-  except EParseError:
+    discard markdownToHtml(content)
+  except MarkdownError:
     result = false
 
 proc crud(c: TCrud, table: string, data: varargs[string]): SqlQuery =
@@ -305,14 +305,16 @@ proc selectPost(postRow: seq[string], skippedPosts: seq[int],
                 likes: seq[User]): Post =
   let content =
     try:
-      postRow[1].rstToHtml()
-    except EParseError:
+      postRow[1].markdownToHtml()
+    except MarkdownError:
       span(class="text-error", "Couldn't render post #$1." % postRow[0])
 
   return Post(
     id: postRow[0].parseInt,
+    isDeleted: postRow[4] == "1",
     replyingTo: replyingTo,
-    author: selectUser(postRow[5..11]),
+    position: postRow[6].parseInt,
+    author: selectUser(postRow[7..13]),
     likes: likes,
     seen: false, # TODO:
     history: history,
@@ -327,7 +329,7 @@ proc selectReplyingTo(replyingTo: string): Option[PostLink] =
   if replyingTo.len == 0: return
 
   const replyingToQuery = sql"""
-    select p.id, strftime('%s', p.creation), p.thread,
+    select p.id, strftime('%s', p.creation), p.thread, p.position,
            u.id, u.name, u.email, strftime('%s', u.lastOnline),
            strftime('%s', u.previousVisitAt), u.status,
            u.isDeleted,
@@ -344,7 +346,8 @@ proc selectReplyingTo(replyingTo: string): Option[PostLink] =
     topic: row[^1],
     threadId: row[2].parseInt(),
     postId: row[0].parseInt(),
-    author: some(selectUser(row[3..9]))
+    author: some(selectUser(row[4..10])),
+    postPosition: row[3].parseInt()
   ))
 
 proc selectHistory(postId: int): seq[PostInfo] =
@@ -360,8 +363,8 @@ proc selectHistory(postId: int): seq[PostInfo] =
       creation: row[0].parseInt(),
       content:
         try:
-          row[1].rstToHtml()
-        except EParseError:
+          row[1].markdownToHtml()
+        except MarkdownError:
           span(class="text-error", "Couldn't render historic post in #$1." % $postId)
     ))
 
@@ -396,7 +399,7 @@ proc selectThreadAuthor(threadId: int): User =
 
 proc selectThread(threadRow: seq[string], author: User): Thread =
   const postsQuery =
-    sql"""select count(*), min(strftime('%s', creation)) from post
+    sql"""select max(position), min(strftime('%s', creation)) from post
           where thread = ?;"""
   const usersListQuery =
     sql"""
@@ -413,19 +416,20 @@ proc selectThread(threadRow: seq[string], author: User): Thread =
     id: threadRow[0].parseInt,
     topic: threadRow[1],
     category: Category(
-      id: threadRow[6].parseInt,
-      name: threadRow[7],
-      description: threadRow[8],
-      color: threadRow[9]
+      id: threadRow[7].parseInt,
+      name: threadRow[8],
+      description: threadRow[9],
+      color: threadRow[10]
     ),
     users: @[],
-    replies: posts[0].parseInt-1,
+    replies: posts[0].parseInt,
     views: threadRow[2].parseInt,
     activity: threadRow[3].parseInt,
     creation: posts[1].parseInt,
     isLocked: threadRow[4] == "1",
     isSolved: false, # TODO: Add a field to `post` to identify the solution.
-    isPinned: threadRow[5] == "1"
+    isPinned: threadRow[5] == "1",
+    lastPost: threadRow[6].parseInt,
   )
 
   # Gather the users list.
@@ -455,9 +459,12 @@ proc executeReply(c: TForumData, threadId: int, content: string,
 
   if content.strip().len == 0:
     raise newForumError("Message cannot be empty")
+    
+  if content.strip().len > 10000:
+    raise newForumError("Message is too long")
 
-  if not validateRst(c, content):
-    raise newForumError("Message needs to be valid RST", @["msg"])
+  if not validateMarkdown(c, content):
+    raise newForumError("Message needs to be valid Markdown", @["msg"])
 
   # Ensure that the thread isn't locked.
   let isLocked = getValue(
@@ -475,17 +482,25 @@ proc executeReply(c: TForumData, threadId: int, content: string,
 
   var retID: int64
 
+  let nextpos = getValue(
+    db,
+    sql"""
+      select coalesce(max(position)+1,0) from post where thread = ?;
+    """,
+    threadId
+  )
+
   if replyingTo.isSome():
     retID = insertID(
       db,
-      crud(crCreate, "post", "author", "ip", "content", "thread", "replyingTo"),
-      c.userId, c.req.ip, content, $threadId, $replyingTo.get()
+      crud(crCreate, "post", "author", "ip", "content", "thread", "replyingTo", "position"),
+      c.userId, c.req.ip, content, $threadId, $replyingTo.get(), nextpos
     )
   else:
     retID = insertID(
       db,
-      crud(crCreate, "post", "author", "ip", "content", "thread"),
-      c.userId, c.req.ip, content, $threadId
+      crud(crCreate, "post", "author", "ip", "content", "thread", "position"),
+      c.userId, c.req.ip, content, $threadId, nextpos
     )
 
   discard tryExec(
@@ -496,6 +511,10 @@ proc executeReply(c: TForumData, threadId: int, content: string,
 
   exec(db, sql"update thread set modified = DATETIME('now') where id = ?",
        $threadId)
+  exec(db, sql"update thread set lastpost = ? where id = ?",
+       $retID, $threadId)
+  exec(db, sql"update person set posts = posts + 1 where id = ?",
+       c.userId)
 
   return retID
 
@@ -515,13 +534,13 @@ proc updatePost(c: TForumData, postId: int, content: string,
   let creation = fromUnix(postRow[1].parseInt)
   let isArchived = (getTime() - creation).inHours >= 2
   let canEdit = c.rank == Admin or c.userid == postRow[0]
-  if isArchived and c.rank < Moderator:
+  if isArchived and c.rank < Admin:
     raise newForumError("This post is too old and can no longer be edited")
   if not canEdit:
     raise newForumError("You cannot edit this post")
 
-  if not validateRst(c, content):
-    raise newForumError("Message needs to be valid RST", @["msg"])
+  if not validateMarkdown(c, content):
+    raise newForumError("Message needs to be valid Markdown", @["msg"])
 
   # Update post.
   # - We create a new postRevision entry for our edit.
@@ -547,7 +566,9 @@ proc updateThread(c: TForumData, threadId: string, queryKeys: seq[string], query
   let threadAuthor = selectThreadAuthor(threadId.parseInt)
 
   # Verify that the current user has permissions to edit the specified thread.
-  let canEdit = c.rank in {Admin, Moderator} or c.userid == threadAuthor.id
+  #change permission
+  #let canEdit = c.rank in {Admin, Moderator} or c.userid == threadAuthor.id
+  let canEdit = c.rank in {Admin, Moderator}
   if not canEdit:
     raise newForumError("You cannot edit this thread")
 
@@ -556,7 +577,7 @@ proc updateThread(c: TForumData, threadId: string, queryKeys: seq[string], query
 proc executeNewThread(c: TForumData, subject, msg, categoryID: string): (int64, int64) =
   const
     query = sql"""
-      insert into thread(name, views, modified, category) values (?, 0, DATETIME('now'), ?)
+      insert into thread(name, views, modified, category, lastPost) values (?, 0, DATETIME('now'), ?, 0)
     """
 
   assert c.loggedIn()
@@ -580,8 +601,8 @@ proc executeNewThread(c: TForumData, subject, msg, categoryID: string): (int64, 
   if catID == -1:
     raise newForumError("CategoryID is invalid", @["categoryId"])
 
-  if not validateRst(c, msg):
-    raise newForumError("Message needs to be valid RST", @["msg"])
+  if not validateMarkdown(c, msg):
+    raise newForumError("Message needs to be valid Markdown", @["msg"])
 
   when not defined(skipRateLimitCheck):
     if rateLimitCheck(c):
@@ -590,10 +611,14 @@ proc executeNewThread(c: TForumData, subject, msg, categoryID: string): (int64, 
   result[0] = tryInsertID(db, query, subject, categoryID).int
   if result[0] < 0:
     raise newForumError("Subject already exists", @["subject"])
+    
+  discard tryExec(db, sql"update person set threads = threads + 1 where id = ?", c.userId)
+  discard tryExec(db, sql"update category set threads = threads + 1 where id = ?", catID) 
 
   discard tryExec(db, crud(crCreate, "thread_fts", "id", "name"),
                   result[0], subject)
   result[1] = executeReply(c, result[0].int, msg, none[int]())
+  discard tryExec(db, crud(crUpdate, "thread", "lastPost"), result[1].int, result[0].int)
   discard tryExec(db, sql"insert into post_fts(post_fts) values('optimize')")
   discard tryExec(db, sql"insert into post_fts(thread_fts) values('optimize')")
 
@@ -612,7 +637,8 @@ proc executeLogin(c: TForumData, username, password: string): string =
     raise newForumError("Username cannot be empty", @["username"])
 
   for row in fastRows(db, query, username, username):
-    if row[2] == makePassword(password, row[4], row[2]):
+    if row[2] == makePassword(password, row[4], row[2]) or
+      row[2] == makePhpbbPassword(password, row[2]):
       let key = makeSessionKey()
       exec(
         db,
@@ -741,7 +767,9 @@ proc executeDeletePost(c: TForumData, postId: int) =
     author = row[0]
     id = row[1]
 
-  if id.len == 0 and not (c.rank == Admin or c.userid == author):
+  #if id.len == 0 and not (c.rank == Admin or c.userid == author):
+  #change permission
+  if id.len == 0 and not (c.rank == Admin):
     raise newForumError("You cannot delete this post")
 
   # Set the `isDeleted` flag.
@@ -750,7 +778,9 @@ proc executeDeletePost(c: TForumData, postId: int) =
 proc executeDeleteThread(c: TForumData, threadId: int) =
   # Verify that this thread belongs to the user.
   let author = selectThreadAuthor(threadId)
-  if author.name != c.username and c.rank < Admin:
+  #if author.name != c.username and c.rank < Admin:
+  #change permission
+  if c.rank < Admin:
     raise newForumError("You cannot delete this thread")
 
   # Set the `isDeleted` flag.
@@ -758,7 +788,9 @@ proc executeDeleteThread(c: TForumData, threadId: int) =
 
 proc executeDeleteUser(c: TForumData, username: string) =
   # Verify that the current user has the permissions to do this.
-  if username != c.username and c.rank < Admin:
+  #if username != c.username and c.rank < Admin:
+  if c.rank < Admin:
+  #change permission
     raise newForumError("You cannot delete this user.")
 
   # Set the `isDeleted` flag.
@@ -820,10 +852,11 @@ routes:
     # TODO: Limit this query in the case of many many categories
     const categoriesQuery =
       sql"""
-        select c.*, count(thread.category)
-        from category c
-        left join thread on c.id == thread.category
-        group by c.id;
+        select id, name, description, color, threads
+        from category
+        where position >= 0
+        order by position
+        limit 100;
       """
 
     var list = CategoryList(categories: @[])
@@ -840,21 +873,24 @@ routes:
       start = getInt(@"start", 0)
       count = getInt(@"count", 30)
       categoryId = getInt(@"categoryId", -1)
+    if count > 30: count = 30
 
     var
       categorySection = ""
+      categoryPinned = ""
       categoryArgs: seq[string] = @[$start, $count]
-      countQuery = sql"select count(*) from thread;"
+      countQuery = sql"select sum(threads) from category;"
       countArgs: seq[string] = @[]
 
     if categoryId != -1:
       categorySection = "c.id == ? and "
-      countQuery = sql"select count(*) from thread t, category c where category == c.id and c.id == ?;"
+      categoryPinned = "isPinned desc,"
+      countQuery = sql"select threads from category where id == ?;"
       countArgs.add($categoryId)
       categoryArgs.insert($categoryId, 0)
-
+    
     const threadsQuery =
-      """select t.id, t.name, views, strftime('%s', modified), isLocked, isPinned,
+      """select t.id, t.name, views, strftime('%s', modified), isLocked, isPinned, lastPost,
                    c.id, c.name, c.description, c.color,
                    u.id, u.name, u.email, strftime('%s', u.lastOnline),
                    strftime('%s', u.previousVisitAt), u.status, u.isDeleted
@@ -867,14 +903,14 @@ routes:
                     order by p.author
                     limit 1
                   )
-            order by isPinned desc, modified desc limit ?, ?;"""
+            order by $# modified desc limit ?, ?;"""
 
     let thrCount = getValue(db, countQuery, countArgs).parseInt()
     let moreCount = max(0, thrCount - (start + count))
 
     var list = ThreadList(threads: @[], moreCount: moreCount)
-    for data in getAllRows(db, sql(threadsQuery % categorySection), categoryArgs):
-      let thread = selectThread(data[0 .. 9], selectUser(data[10 .. ^1]))
+    for data in getAllRows(db, sql(threadsQuery % [categorySection, categoryPinned] ), categoryArgs):
+      let thread = selectThread(data[0 .. 10], selectUser(data[11 .. ^1]))
       list.threads.add(thread)
 
     resp $(%list), "application/json"
@@ -884,12 +920,13 @@ routes:
     var
       id = getInt(@"id", -1)
       anchor = getInt(@"anchor", -1)
+      start = getInt(@"start", 0)
     cond id != -1
     const
-      count = 10
+      count = 100
 
     const threadsQuery =
-      sql"""select t.id, t.name, views, strftime('%s', modified), isLocked, isPinned,
+      sql"""select t.id, t.name, views, strftime('%s', modified), isLocked, isPinned, lastPost,
                    c.id, c.name, c.description, c.color
             from thread t, category c
             where t.id = ? and isDeleted = 0 and category = c.id;"""
@@ -901,16 +938,18 @@ routes:
       )
       resp Http404, $(%err), "application/json"
     let thread = selectThread(threadRow, selectThreadAuthor(id))
+    
+    if start > thread.replies: start = 0
 
     let postsQuery =
       sql(
         """select p.id, p.content, strftime('%s', p.creation), p.author,
-                  p.replyingTo,
+                  p.isDeleted, p.replyingTo, p.position,
                   u.id, u.name, u.email, strftime('%s', u.lastOnline),
                   strftime('%s', u.previousVisitAt), u.status,
                   u.isDeleted
            from post p, person u
-           where u.id = p.author and p.thread = ? and p.isDeleted = 0
+           where u.id = p.author and p.thread = ? and position between ? and ?
            order by p.id"""
       )
 
@@ -919,7 +958,7 @@ routes:
       history: @[],
       thread: thread
     )
-    let rows = getAllRows(db, postsQuery, id, c.userId, c.userId)
+    let rows = getAllRows(db, postsQuery, id, start, start+postPerPage()-1)
 
     var skippedPosts: seq[int] = @[]
     for i in 0 ..< rows.len:
@@ -928,7 +967,7 @@ routes:
       let addDetail = i < count or rows.len-i < count or id == anchor
 
       if addDetail:
-        let replyingTo = selectReplyingTo(rows[i][4])
+        let replyingTo = selectReplyingTo(rows[i][5])
         let history = selectHistory(id)
         let likes = selectLikes(id)
         let post = selectPost(
@@ -955,15 +994,16 @@ routes:
       resp Http400, $(%err), "application/json"
     cond ids.kind == JArray
     let intIDs = ids.elems.map(x => x.getInt())
+    assert intIDs.len <= 100
     let postsQuery = sql("""
       select p.id, p.content, strftime('%s', p.creation), p.author,
-             p.replyingTo,
+             p.isDeleted, p.replyingTo, p.position,
              u.id, u.name, u.email, strftime('%s', u.lastOnline),
              strftime('%s', u.previousVisitAt), u.status,
              u.isDeleted
       from post p, person u
       where u.id = p.author and p.id in ($#)
-      order by p.id;
+      order by p.id limit 100;
     """ % intIDs.join(",")) # TODO: It's horrible that I have to do this.
 
     var list: seq[Post] = @[]
@@ -971,7 +1011,7 @@ routes:
     for row in db.getAllRows(postsQuery):
       let history = selectHistory(row[0].parseInt())
       let likes = selectLikes(row[0].parseInt())
-      list.add(selectPost(row, @[], selectReplyingTo(row[4]), history, likes))
+      list.add(selectPost(row, @[], selectReplyingTo(row[5]), history, likes))
 
     resp $(%list), "application/json"
 
@@ -1020,7 +1060,7 @@ routes:
     """
 
     let postsQuery = sql("""
-      select p.id, strftime('%s', p.creation),
+      select p.id, strftime('%s', p.creation), p.position,
              t.name, t.id
       $1
       order by p.id desc limit 10;
@@ -1048,9 +1088,9 @@ routes:
     profile.user = selectUser(userRow, avatarSize=200)
     profile.joinTime = userRow[^2].parseInt()
     profile.postCount =
-      getValue(db, sql("select count(*) " & postsFrom), username).parseInt()
+      getValue(db, sql("select posts from person where id = ?"), userID).parseInt()
     profile.threadCount =
-      getValue(db, sql("select count(*) " & threadsFrom), userID).parseInt()
+      getValue(db, sql("select threads from person where id = ?"), userID).parseInt()
 
     if c.rank >= Admin or c.username == username:
       profile.email = some(userRow[2])
@@ -1059,9 +1099,10 @@ routes:
       profile.posts.add(
         PostLink(
           creation: row[1].parseInt(),
-          topic: row[2],
-          threadId: row[3].parseInt(),
-          postId: row[0].parseInt()
+          topic: row[3],
+          threadId: row[4].parseInt(),
+          postId: row[0].parseInt(),
+          postPosition: row[2].parseInt()
         )
       )
 
@@ -1077,7 +1118,8 @@ routes:
           creation: row[2].parseInt(),
           topic: row[1],
           threadId: row[0].parseInt(),
-          postId: row[3].parseInt()
+          postId: row[3].parseInt(),
+          postPosition: 0
         )
       )
 
@@ -1094,7 +1136,7 @@ routes:
         formData["username"].body,
         formData["password"].body
       )
-      setCookie("sid", session, httpOnly=true, sameSite=Strict, secure=true)
+      setCookie("sid", session, httpOnly=true, sameSite=Strict, secure=false)
       resp Http200, "{}", "application/json"
     except ForumError as exc:
       resp Http400, $(%exc.data), "application/json"
@@ -1122,7 +1164,7 @@ routes:
         formData["email"].body
       )
       let session = executeLogin(c, username, password)
-      setCookie("sid", session, httpOnly=true, sameSite=Strict, secure=true)
+      setCookie("sid", session, httpOnly=true, sameSite=Strict, secure=false)
       resp Http200, "{}", "application/json"
     except ForumError as exc:
       resp Http400, $(%exc.data), "application/json"
@@ -1182,13 +1224,21 @@ routes:
     cond "msg" in formData
 
     let msg = formData["msg"].body
-    try:
-      let rendered = msg.rstToHtml()
-      resp Http200, rendered
-    except EParseError:
+    
+    if msg.strip().len > 10000:
       let err = PostError(
         errorFields: @[],
-        message: "Message needs to be valid RST! Error: " &
+        message: "Message is too long."
+      )
+      resp Http401, $(%err), "application/json"
+    
+    try:
+      let rendered = msg.markdownToHtml()
+      resp Http200, rendered
+    except MarkdownError:
+      let err = PostError(
+        errorFields: @[],
+        message: "Message needs to be valid Markdown! Error: " &
                  getCurrentExceptionMsg()
       )
       resp Http400, $(%err), "application/json"
@@ -1249,7 +1299,7 @@ routes:
 
     try:
       updatePost(c, postId, msg, subject)
-      resp Http200, msg.rstToHtml(), "text/html"
+      resp Http200, msg.markdownToHtml(), "text/html"
     except ForumError as exc:
       resp Http400, $(%exc.data), "application/json"
 
@@ -1620,7 +1670,7 @@ routes:
     ]
     for rowFT in fastRows(db, queryFT, data):
       var content = rowFT[3]
-      try: content = content.rstToHtml() except EParseError: discard
+      try: content = content.markdownToHtml() except MarkdownError: discard
       results.add(
         SearchResult(
           kind: SearchResultKind(rowFT[^1].parseInt()),
@@ -1629,7 +1679,8 @@ routes:
           postId: rowFT[2].parseInt(),
           postContent: content,
           creation: rowFT[4].parseInt(),
-          author: selectUser(rowFT[5 .. 11]),
+          author: selectUser(rowFT[6 .. 12]),
+          postPosition: rowFT[5].parseInt(),
         )
       )
 

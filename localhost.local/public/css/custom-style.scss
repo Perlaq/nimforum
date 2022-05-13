@@ -14,3 +14,35 @@ $navbar-primary-color: #e80080;
 #main-navbar input#search-box {
   border: 1px solid #e6e6e6;
 }
+.panel-body .text-error {
+  margin-left: 1em;
+}
+#thread-subtitle {
+  display: table;
+}
+.subtitle-cell {
+  display: table-cell;
+}
+#categories-list {
+  margin-bottom: 20px;
+}
+#categories-list .category,
+#categories-list .category-description,
+#threads-list .category {
+  white-space: normal;
+}
+.hide-sm .category {
+  white-space: normal;
+  max-width: 200px;
+}
+@media all and (max-width: 640px) {
+  .dropdown .category {
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .menu-item .category {
+    white-space: normal;
+  }
+}

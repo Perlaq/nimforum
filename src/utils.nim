@@ -1,5 +1,5 @@
 import asyncdispatch, smtp, strutils, json, os, rst, rstgen, xmltree, strtabs,
-  htmlparser, streams, parseutils, options, logging
+  htmlparser, streams, parseutils, options, logging, markdown
 from times import getTime, utc, format
 
 # Used to be:
@@ -187,3 +187,9 @@ proc rstToHtml*(content: string): string =
     add(result, node, indWidth=0, addNewLines=false)
   except:
     warn("Could not parse rst html.")
+
+proc markdownToHtml*(content: string): string =
+  try:
+    result = markdown(content, config=initGfmConfig())
+  except:
+    warn("Could not parse markdown.")

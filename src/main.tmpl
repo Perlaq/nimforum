@@ -18,7 +18,7 @@
 #    FROM thread AS A, post AS B, person AS C
 #    WHERE A.id = b.thread AND B.author = C.id
 #    GROUP BY B.thread
-#    ORDER BY modified DESC LIMIT ?"""
+#    ORDER BY B.id DESC LIMIT ?"""
 #  const threadId = 0
 #  const name = 1
 #  const threadDate = 2
@@ -51,7 +51,7 @@
         <content type="html"
 >Posts ${!postCount}, ${xmlEncode(!postAuthor)} said:
 &lt;p&gt;
-${xmlEncode(rstToHtml(!postContent))}</content>
+${xmlEncode(markdownToHtml(!postContent))}</content>
     </entry>
 # end for
 </feed>
@@ -66,7 +66,7 @@ ${xmlEncode(rstToHtml(!postContent))}</content>
 #    WHERE A.author = B.id AND A.thread = C.thread AND C.id <= A.id
 #          AND T.id = A.thread
 #    GROUP BY A.id
-#    ORDER BY A.creation DESC LIMIT 10"""
+#    ORDER BY A.id DESC LIMIT 10"""
 #  const postId = 0
 #  const postAuthor = 1
 #  const postContent = 2
@@ -100,7 +100,7 @@ ${xmlEncode(rstToHtml(!postContent))}</content>
         <content type="html"
 >On ${xmlEncode(!postHumanDate)}, ${xmlEncode(!postAuthor)} said:
 &lt;p&gt;
-${xmlEncode(rstToHtml(!postContent))}</content>
+${xmlEncode(markdownToHtml(!postContent))}</content>
     </entry>
 # end for
 </feed>

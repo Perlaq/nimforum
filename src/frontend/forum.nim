@@ -105,12 +105,14 @@ proc render(): VNode =
             )
           )
       ),
-      r("/t/@id",
+      r("/t/@id/?s?/?@start?",
         (params: Params) =>
           (
             let postId = getInt(($state.url.hash).substr(1), 0);
+            let start = params["start"].parseInt();
             renderPostList(
               params["id"].parseInt(),
+              if start > 0: start else: 0,
               if postId == 0: none[int]() else: some[int](postId),
               getLoggedInUser()
             )

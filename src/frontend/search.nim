@@ -12,6 +12,7 @@ type
     postContent*: string
     author*: User
     creation*: int64
+    postPosition*: int
 
 proc isModerated*(searchResult: SearchResult): bool =
   return searchResult.author.rank <= Moderated
@@ -50,7 +51,7 @@ when defined(js):
     state.list = some(list)
 
   proc genSearchResult(searchResult: SearchResult): VNode =
-    let url = renderPostUrl(searchResult.threadId, searchResult.postId)
+    let url = renderPostUrl(searchResult.threadId, searchResult.postId, searchResult.postPosition)
     result = buildHtml():
       tdiv(class="post", id = $searchResult.postId):
         tdiv(class="post-icon"):

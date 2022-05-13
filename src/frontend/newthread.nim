@@ -31,7 +31,7 @@ when defined(js):
     postFinished:
       let j = parseJson($response)
       let response = to(j, array[2, int])
-      navigateTo(renderPostUrl(response[0], response[1]))
+      navigateTo(renderPostUrl(response[0], response[1], 0))
 
   proc onCreateClick(ev: Event, n: VNode, state: NewThread) =
     state.loading = true

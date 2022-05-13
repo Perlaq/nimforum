@@ -11,6 +11,7 @@ type
     users*: seq[User]
     replies*: int
     views*: int
+    lastPost*: int
     activity*: int64 ## Unix timestamp
     creation*: int64 ## Unix timestamp
     isLocked*: bool
@@ -31,7 +32,7 @@ when defined(js):
   include karax/prelude
   import karax / [vstyles, kajax, kdom]
 
-  import karaxutils, error, user, mainbuttons
+  import karaxutils, error, user, mainbuttons, post
 
   type
     State = ref object
@@ -97,6 +98,16 @@ when defined(js):
     else:
       return $duration.inSeconds & "s"
 
+  proc genLastPost(thread: Thread, act: string, isNew: bool, isOld: bool): VNode =
+    result = buildHtml():
+      let pos = PostLink(postPosition : thread.replies, 
+                         threadId : thread.id,
+                         postId : thread.lastPost)
+
+      a(class=class({"is-new": isNew, "is-old": isOld}, "thread-time"),
+        href=renderPostUrl(pos)):
+        text act
+
   proc genThread(pos: int, thread: Thread, isNew: bool, noBorder: bool, displayCategory=true): VNode =
     let isOld = (getTime() - thread.creation.fromUnix).inWeeks > 2
     let isBanned = thread.author.rank.isBanned()
@@ -145,7 +156,7 @@ when defined(js):
         )
         td(class=class({"is-new": isNew, "is-old": isOld}, "thread-time"),
            title=friendlyCreation & friendlyActivity):
-          text renderActivity(thread.activity)
+          genLastPost(thread, renderActivity(thread.activity), isNew, isOld)
 
   proc onThreadList(httpStatus: int, response: kstring) =
     state.loading = false

@@ -348,7 +348,47 @@ when defined(js):
           tdiv(class="information-title"):
             text diffStr
 
-  proc renderPostList*(threadId: int, postId: Option[int],
+  proc paginate(threadId: int, startPos: int, totalReplies: int, perPage: int): VNode =
+    result = buildHtml(tdiv):
+      if totalReplies > perPage:
+
+          a(class="chip",
+            href=makeUri("/t/" & $threadId)):
+            text "<"
+
+            
+          var current = (startPos div perPage)*perPage
+          if startPos > totalReplies: current = 0
+
+          for n in countup(current-perPage*3, current+perPage*3, perPage):
+            if n<=totalReplies and n>=(current+perPage div 2) and n<=(current+perPage*3):
+              a(class="chip",
+                href=makeUri("/t/" & $threadId & "/s/" & $n)):
+                text $(n div perPage)
+            elif n>=0 and n<=(current-perPage div 2) and n>=(current-perPage*3):
+              a(class="chip",
+                href=makeUri("/t/" & $threadId & "/s/" & $n)):
+                text $(n div perPage)
+            elif n>=0 and n==current:
+              span(class="chip active"):
+                text $(n div perPage)
+
+
+          a(class="chip",
+            href=makeUri("/t/" & $threadId & "/s/" & $((totalReplies div perPage)*perPage))):
+            text ">"
+
+  proc genLastPost(thread: Thread): VNode =
+    result = buildHtml():
+      let pos = PostLink(postPosition : thread.replies, 
+                         threadId : thread.id,
+                         postId : thread.lastPost)
+      a(class="category-status",
+        href=renderPostUrl(pos)):
+        button(class="plus-btn btn btn-link"):
+          italic(class="fas fa-level-down-alt")
+
+  proc renderPostList*(threadId: int, startPos: int, postId: Option[int],
                        currentUser: Option[User]): VNode =
     if state.list.isSome() and state.list.get().thread.id != threadId:
       state.list = none[PostList]()
@@ -361,6 +401,8 @@ when defined(js):
       var params = @[("id", $threadId)]
       if postId.isSome():
         params.add(("anchor", $postId.get()))
+      if startPos > 0:
+        params.add(("start", $startPos))
       let uri = makeUri("posts.json", params)
       if not state.loading:
         state.loading = true
@@ -388,11 +430,27 @@ when defined(js):
             italic(class="fas fa-check-square fa-xs",
                    title="Thread has a solution")
             text "Solved"
-          genCategories(list.thread, currentUser)
+          tdiv(id="thread-subtitle"):
+            tdiv(class="subtitle-cell"):
+              genCategories(list.thread, currentUser)
+            tdiv(class="subtitle-cell"):
+              genLastPost(list.thread)
         tdiv(class="posts"):
           var prevPost: Option[Post] = none[Post]()
           for i, post in list.posts:
-            if not post.visibleTo(currentUser): continue
+            if not post.visibleTo(currentUser):
+              tdiv(class="post",  id = $post.id):
+                tdiv(class="post-main"):
+                  tdiv(class="post-content category-description"):
+                    text "post " & $post.id & " from " &
+                      post.author.name & " is hidden"
+            if post.isDeleted:
+              tdiv(class="post",  id = $post.id):
+                tdiv(class="post-main"):
+                  tdiv(class="post-content category-description"):
+                    text "post " & $post.id & " from " &
+                      post.author.name & " has been deleted"
+              continue
 
             if prevPost.isSome:
               genTimePassed(prevPost.get(), some(post), false)
@@ -414,6 +472,8 @@ when defined(js):
 
             render(state.lockButton, list.thread, currentUser)
             render(state.pinButton, list.thread, currentUser)
+
+            paginate(threadId, startPos, list.thread.replies, postPerPage())
 
           render(state.replyBox, list.thread, state.replyingTo, false)
 

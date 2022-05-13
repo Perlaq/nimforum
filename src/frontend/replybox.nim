@@ -64,8 +64,13 @@ when defined(js):
     state.preview = false
     state.error = none[PostError]()
 
-  proc onReplyPost(httpStatus: int, response: kstring, state: ReplyBox) =
+  proc onReplyPost(httpStatus: int, response: kstring, state: ReplyBox, thread: Thread) =
     postFinished:
+      let pos = PostLink(postPosition : thread.replies+1, 
+                         threadId : thread.id,
+                         postId : parseJson($response).getInt())
+      window.location.href = renderPostUrl(pos)
+     
       state.text = ""
       state.shown = false
       state.onPost(parseJson($response).getInt())
@@ -82,7 +87,7 @@ when defined(js):
       formData.append("replyingTo", $replyingTo.get().id)
     let uri = makeUri("/createPost")
     ajaxPost(uri, @[], formData.to(cstring),
-             (s: int, r: kstring) => onReplyPost(s, r, state))
+             (s: int, r: kstring) => onReplyPost(s, r, state, thread))
 
   proc onCancelClick(e: Event, n: VNode, state: ReplyBox) =
     # TODO: Double check reply box contents and ask user whether to discard.
@@ -120,8 +125,8 @@ when defined(js):
                      onChange=(e: Event, n: VNode) =>
                         onChange(e, n, state),
                      value=state.text)
-            a(href=makeUri("/about/rst"), target="blank_"):
-              text "Styling with RST is supported"
+            a(href="https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet", target="blank_"):
+              text "Styling with Markdown is supported"
 
           if state.error.isSome():
             span(class="text-error",

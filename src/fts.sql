@@ -7,6 +7,7 @@ SELECT
         post_id,
         post_content,
         cdate,
+        post_position,
         person.id,
         person.name AS author,
         person.email AS email,
@@ -22,6 +23,7 @@ SELECT
                 post.content AS post_content,
                 strftime('%s', post.creation) AS cdate,
                 MIN(post.creation) AS cdate,
+                post.position AS post_position,
                 post.author AS author_id
             FROM thread_fts
             JOIN post ON post.thread=thread_id
@@ -47,6 +49,7 @@ SELECT
             THEN snippet(post_fts, '**', '**', '...', what, -45)
             ELSE SUBSTR(post_fts.content, 1, 200) END AS content,
         cdate,
+        post_position,
         person.id,
         person.name AS author,
         person.email AS email,
@@ -58,7 +61,7 @@ SELECT
     FROM post_fts JOIN (
     -- inner query, selects ids of matching posts, orders and limits them,
     -- so snippets only for limited count of posts are created (in outer query)
-        SELECT id, strftime('%s', post.creation) AS cdate, thread, 1 AS what, post.author AS author
+        SELECT id, strftime('%s', post.creation) AS cdate, thread, 1 AS what, post.author AS author, post.position AS post_position
             FROM post_fts JOIN post USING(id)
             WHERE post_fts.content MATCH ?
         ORDER BY what, cdate DESC
