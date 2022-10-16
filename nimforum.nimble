@@ -17,14 +17,14 @@ requires "httpbeast >= 0.4.0"
 requires "jester#405be2e"
 requires "bcrypt#440c5676ff6"
 requires "hmac#9c61ebe2fd134cf97"
-requires "recaptcha#d06488e"
+requires "recaptcha#0c471d2"
 requires "sass#649e0701fa5c"
 
 requires "karax#5f21dcd"
 
 requires "webdriver#429933a"
 
-requires "markdown"
+requires "markdown#568a7cd"
 
 # Tasks
 
@@ -45,7 +45,9 @@ task frontend, "Builds the necessary JS frontend (with CSS)":
   cpFile "src/frontend/forum.js", "public/js/forum.js"
 
 task minify, "Minifies the JS using Google's closure compiler":
-  exec "closure-compiler public/js/forum.js --js_output_file public/js/forum.js.opt"
+  exec "./src/minify -o public/css/forum.css public/css/forum.css"
+  exec "./src/minify -o public/js/forum.js public/js/forum.js"
+  exec "chmod 644 public/js/forum.js public/css/forum.css"
 
 task testdb, "Creates a test DB (with admin account!)":
   exec "nimble c src/setup_nimforum"

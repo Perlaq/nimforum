@@ -4,7 +4,7 @@ when defined(js):
   import jsffi except `&`
 
   include karax/prelude
-  import karax / [kajax, kdom]
+  import karax / [kajax, kdom, i18n]
 
   import error
   import karaxutils
@@ -60,33 +60,33 @@ when defined(js):
               "aria-label"="close",
               onClick=(ev: Event, n: VNode) => onClose(ev, n, state))
             tdiv(class="modal-title h5"):
-              text "Create a new account"
+              text (i18n"Create a new account" % [])
           tdiv(class="modal-body"):
             tdiv(class="content"):
               form(id="signup-form"):
                 genFormField(state.error, "email", "Email", "email", false)
-                genFormField(state.error, "username", "Username", "text", false)
+                genFormField(state.error, "username", $(i18n"Username" % []), "text", false)
                 genFormField(
                   state.error,
                   "password",
-                  "Password",
+                  $(i18n"Password" % []),
                   "password",
                   true
                 )
                 if recaptchaSiteKey.isSome:
                   tdiv(id="recaptcha"):
-                    tdiv(class="g-recaptcha",
+                    tdiv(class="h-captcha",
                          "data-sitekey"=recaptchaSiteKey.get())
-                    script(src="https://www.google.com/recaptcha/api.js")
+                    script(src="https://hcaptcha.com/1/api.js")
           tdiv(class="modal-footer"):
             button(class=class({"loading": state.loading},
                                "btn btn-primary create-account-btn"),
                    onClick=(ev: Event, n: VNode) => onSignUpClick(ev, n, state)):
-              text "Create account"
+              text (i18n"Create account" % [])
             button(class="btn login-btn",
                    onClick=(ev: Event, n: VNode) =>
                     (state.onLogIn(); state.shown = false)):
-              text "Log in"
+              text $(i18n"Log in" % [])
 
             p(class="license-text text-gray"):
               text "By registering, you agree to the "

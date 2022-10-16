@@ -5,7 +5,7 @@ when defined(js):
   from dom import getElementById, scrollIntoView, setTimeout
 
   include karax/prelude
-  import karax / [vstyles, kajax, kdom]
+  import karax / [vstyles, kajax, kdom, i18n]
 
   import karaxutils, threadlist, post, error, user
 
@@ -107,12 +107,12 @@ when defined(js):
                onClick=(e: Event, n: VNode) =>
                   onMessageClick(e, n, state)):
               a(class="c-hand"):
-                text "Message"
+                text (i18n"Message" % [])
             li(class=class({"active": state.preview}, "tab-item"),
                onClick=(e: Event, n: VNode) =>
                   onPreviewClick(e, n, state)):
               a(class="c-hand"):
-                text "Preview"
+                text (i18n"Preview" % [])
         tdiv(class="panel-body"):
           if state.preview:
             if state.loading:
@@ -126,7 +126,7 @@ when defined(js):
                         onChange(e, n, state),
                      value=state.text)
             a(href="https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet", target="blank_"):
-              text "Styling with Markdown is supported"
+              text (i18n"Styling with Markdown is supported" % [])
 
           if state.error.isSome():
             span(class="text-error",
@@ -141,11 +141,11 @@ when defined(js):
                    ),
                    onClick=(e: Event, n: VNode) =>
                       onReplyClick(e, n, state, thread.get(), post)):
-              text "Reply"
+              text (i18n"Reply" % [])
             button(class="btn btn-link float-right",
                    onClick=(e: Event, n: VNode) =>
                       onCancelClick(e, n, state)):
-              text "Cancel"
+              text (i18n"Cancel" % [])
 
   proc render*(state: ReplyBox, thread: Thread, post: Option[Post],
                hasMore: bool): VNode =

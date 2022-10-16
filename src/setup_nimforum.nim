@@ -93,7 +93,9 @@ proc initialiseDb(admin: tuple[username, password, email: string],
   #db.exec(sql"""
   #  create unique index ThreadNameIx on thread (name);
   #""", [])
-  db.exec sql"create index ThreadDelCatPinIdx on thread(isDeleted, category, isPinned);"
+  db.exec sql"create index ThreadModIdx on thread(modified);"
+  db.exec sql"create index ThreadPinIdx on thread(isPinned, modified);"
+  db.exec sql"create index ThreadCategoryIdx on thread(category, isPinned, modified);"
 
   # -- Person
 
@@ -158,8 +160,11 @@ proc initialiseDb(admin: tuple[username, password, email: string],
       foreign key (replyingTo) references post(id)
     );""", [])
 
-  db.exec sql"create index PostByAuthorIdx on post(thread, author);"
-  db.exec sql"create index PostByCreationIdx on post(thread, position, creation);"
+  db.exec sql"create index PostByAuthorIdx on post(author);"
+  db.exec sql"create index PostByThreadIdx on post(thread);"
+  db.exec sql"create index PostByPositionIdx on post(thread, position);"
+  db.exec sql"create index PostByTopIdx on post(author, position);"
+  db.exec sql"create index PostByCreationIdx on post(thread, creation);"
 
   db.exec(sql"""
     create table postRevision(
@@ -171,6 +176,27 @@ proc initialiseDb(admin: tuple[username, password, email: string],
       foreign key (original) references post(id)
     )
   """)
+  
+  db.exec sql"create index PostRevisionIdx on postRevision(original);"
+  
+  # -- Private messages
+
+  db.exec(sql"""
+    create table privmsgs(
+      id integer primary key,
+      author integer not null,
+      ip inet not null,
+      content varchar(1000) not null,
+      subject varchar(256) not null,
+      creation timestamp not null default (DATETIME('now')),
+      recipient integer,
+
+      foreign key (author) references person(id),
+      foreign key (recipient) references person(id)
+    );""", [])
+    
+  db.exec sql"create index PmByAuthorIdx on privmsgs(author, recipient);"
+  db.exec sql"create index PmByCreationIdx on privmsgs(author, creation);"
 
   # -- Session
 
@@ -197,6 +223,8 @@ proc initialiseDb(admin: tuple[username, password, email: string],
       foreign key (post) references post(id)
     )
   """))
+
+  db.exec sql"create index LikeByPostIdx on like(post);"
 
   # -- Report
 

@@ -5,7 +5,7 @@ import threadlist, post, error, user
 when defined(js):
   from dom import document
   include karax/prelude
-  import karax/[kajax, kdom]
+  import karax/[kajax, kdom, i18n]
   import karaxutils, profilesettings
 
   type
@@ -87,26 +87,26 @@ when defined(js):
 
         tdiv(class="profile-stats"):
           dl():
-            dt(text "Joined")
+            dt(text (i18n"Joined" % []))
             dd(text threadlist.renderActivity(profile.joinTime))
             if profile.posts.len > 0:
-              dt(text "Last Post")
+              dt(text (i18n"Last Post" % []))
               dd(text renderActivity(profile.posts[0].creation))
-            dt(text "Last Online")
+            dt(text (i18n"Last Online" % []))
             dd(text renderActivity(profile.user.lastOnline))
-            dt(text "Posts")
+            dt(text (i18n"Posts" % []))
             dd():
               if profile.postCount > 999:
                 text $(profile.postCount / 1000) & "k"
               else:
                 text $profile.postCount
-            dt(text "Threads")
+            dt(text (i18n"Threads" % []))
             dd():
               if profile.threadCount > 999:
                 text $(profile.threadCount / 1000) & "k"
               else:
                 text $profile.threadCount
-            dt(text "Rank")
+            dt(text (i18n"Rank" % []))
             dd(text $profile.user.rank)
 
         if currentUser.isSome():
@@ -120,7 +120,7 @@ when defined(js):
                  onClick=(e: Event, n: VNode) => (state.currentTab = Overview)
                 ):
                 a(id="overview-tab", class="c-hand"):
-                  text "Overview"
+                  text (i18n"Overview" % [])
               li(class=class(
                   {"active": state.currentTab == Settings},
                   "tab-item"
@@ -129,19 +129,19 @@ when defined(js):
                 ):
                 a(id="settings-tab", class="c-hand"):
                   italic(class="fas fa-cog")
-                  text " Settings"
+                  text (i18n" Settings" % [])
 
         case state.currentTab
         of Overview:
           if profile.posts.len > 0 or profile.threads.len > 0:
             tdiv(class="columns"):
               tdiv(class="column col-6"):
-                h4(text "Latest Posts")
+                h4(text (i18n"Latest Posts" % []))
                 tdiv(class="posts"):
                   for post in profile.posts:
                     genPostLink(post)
               tdiv(class="column col-6"):
-                h4(text "Latest Threads")
+                h4(text (i18n"Latest Threads"  % []))
                 tdiv(class="posts"):
                   for thread in profile.threads:
                     genPostLink(thread)

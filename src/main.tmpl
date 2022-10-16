@@ -14,18 +14,16 @@
 #  result = ""
 #  const query = sql"""SELECT A.id, A.name,
 #    strftime('%Y-%m-%dT%H:%M:%SZ', (A.modified)),
-#    COUNT(B.id), C.name, B.content, B.id
+#    C.name, B.content, B.id
 #    FROM thread AS A, post AS B, person AS C
 #    WHERE A.id = b.thread AND B.author = C.id
-#    GROUP BY B.thread
 #    ORDER BY B.id DESC LIMIT ?"""
 #  const threadId = 0
 #  const name = 1
 #  const threadDate = 2
-#  const postCount = 3
-#  const postAuthor = 4
-#  const postContent = 5
-#  const postId = 6
+#  const postAuthor = 3
+#  const postContent = 4
+#  const postId = 5
 #  let frontQuery = c.req.makeUri("/")
 #  let recent = getValue(db, sql"""SELECT
 #    strftime('%Y-%m-%dT%H:%M:%SZ', (modified)) FROM thread
@@ -49,9 +47,7 @@
         <updated>${!threadDate}</updated>
         <author><name>${xmlEncode(!postAuthor)}</name></author>
         <content type="html"
->Posts ${!postCount}, ${xmlEncode(!postAuthor)} said:
-&lt;p&gt;
-${xmlEncode(markdownToHtml(!postContent))}</content>
+>${xmlEncode(markdownToHtml(!postContent))}</content>
     </entry>
 # end for
 </feed>
@@ -61,11 +57,10 @@ ${xmlEncode(markdownToHtml(!postContent))}</content>
 #  result = ""
 #  const query = sql"""SELECT A.id, B.name, A.content, A.thread, T.name,
 #    strftime('%Y-%m-%dT%H:%M:%SZ', A.creation),
-#    A.creation, COUNT(C.id)
-#    FROM post AS A, person AS B, post AS C, thread AS T
-#    WHERE A.author = B.id AND A.thread = C.thread AND C.id <= A.id
+#    A.creation, A.position
+#    FROM post AS A, person AS B, thread AS T
+#    WHERE A.author = B.id
 #          AND T.id = A.thread
-#    GROUP BY A.id
 #    ORDER BY A.id DESC LIMIT 10"""
 #  const postId = 0
 #  const postAuthor = 1
@@ -90,17 +85,16 @@ ${xmlEncode(markdownToHtml(!postContent))}</content>
     <entry>
         <title>${xmlEncode(!postHeader)}</title>
         <id>urn:entry:${!postId}</id>
-        # let url = c.genThreadUrl(threadid = !postThread) &
-        #   "#" & !postId
+        #var page = (parseInt(!postPosition) div postPerPage())*postPerPage()
+        #var url = (if page > 0: c.genThreadUrl(threadid = !postThread) & "/s/" & $page & "#" & !postId
+        #  else: c.genThreadUrl(threadid = !postThread) & "#" & !postId )
         <link rel="alternate" type="text/html"
           href="${c.req.makeUri(url)}"/>
         <published>${!postRssDate}</published>
         <updated>${!postRssDate}</updated>
         <author><name>${xmlEncode(!postAuthor)}</name></author>
         <content type="html"
->On ${xmlEncode(!postHumanDate)}, ${xmlEncode(!postAuthor)} said:
-&lt;p&gt;
-${xmlEncode(markdownToHtml(!postContent))}</content>
+>${xmlEncode(markdownToHtml(!postContent))}</content>
     </entry>
 # end for
 </feed>

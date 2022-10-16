@@ -15,16 +15,13 @@ $navbar-primary-color: #e80080;
   border: 1px solid #e6e6e6;
 }
 .panel-body .text-error {
-  margin-left: 1em;
-}
-#thread-subtitle {
-  display: table;
-}
-.subtitle-cell {
-  display: table-cell;
+  margin-left: 1rem;
 }
 #categories-list {
   margin-bottom: 20px;
+}
+#category-selection {
+  margin-right: 0.4rem;
 }
 #categories-list .category,
 #categories-list .category-description,
@@ -37,7 +34,7 @@ $navbar-primary-color: #e80080;
 }
 @media all and (max-width: 640px) {
   .dropdown .category {
-    max-width: 220px;
+    max-width: 175px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -45,4 +42,23 @@ $navbar-primary-color: #e80080;
   .menu-item .category {
     white-space: normal;
   }
+  #img-logo {
+    width: 40px;
+    object-fit: cover;
+    object-position: left;
+  }
+  iframe {
+    max-width: 100%;
+  }
+}
+.video-responsive {
+  max-width: 640px;
+}
+.post-content ol {
+  list-style: decimal;
+}
+.profile-post-title, #threads-list .thread-title, .post-content p {
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
 }

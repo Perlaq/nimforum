@@ -24,8 +24,8 @@ proc buildCSS*(config: Config) =
 
   let cssLoc = publicLoc / "css"
   sass.compileFile(
-    cssLoc / "nimforum.scss",
-    cssLoc / "nimforum.css",
+    cssLoc / "forum.scss",
+    cssLoc / "forum.css",
     includePaths=includePaths
   )
 

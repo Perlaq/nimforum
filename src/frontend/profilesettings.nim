@@ -3,7 +3,7 @@ when defined(js):
   import jsffi except `&`
 
   include karax/prelude
-  import karax/[kajax, kdom]
+  import karax/[kajax, kdom, i18n]
 
   import post, karaxutils, postbutton, error, delete, user
 

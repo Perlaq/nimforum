@@ -2,10 +2,10 @@ import options, tables, sugar, httpcore
 from dom import window, Location, document, decodeURI
 
 include karax/prelude
-import karax/[kdom]
+import karax/[kdom,i18n]
 import jester/[patterns]
 
-import threadlist, postlist, header, profile, newthread, error, about
+import threadlist, postlist, userlist, pmlist, header, profile, newthread, newpm, error, about
 import categorylist
 import resetpassword, activateemail, search
 import karaxutils
@@ -16,6 +16,7 @@ type
     url: Location
     profile: ProfileState
     newThread: NewThread
+    newPrivmsg: NewPrivmsg
     about: About
     resetPassword: ResetPassword
     activateEmail: ActivateEmail
@@ -40,6 +41,7 @@ proc newState(): State =
     url: copyLocation(window.location),
     profile: newProfileState(),
     newThread: newNewThread(),
+    newPrivmsg: newNewPrivmsg(),
     about: newAbout(),
     resetPassword: newResetPassword(),
     activateEmail: newActivateEmail(),
@@ -95,6 +97,10 @@ proc render(): VNode =
         (params: Params) =>
           (render(state.newThread, getLoggedInUser()))
       ),
+      r("/newpm",
+        (params: Params) =>
+          (render(state.newPrivmsg, getLoggedInUser()))
+      ),
       r("/profile/@username",
         (params: Params) =>
           (
@@ -103,6 +109,20 @@ proc render(): VNode =
               decodeURI(params["username"]),
               getLoggedInUser()
             )
+          )
+      ),
+      r("/users/?@start?",
+        (params: Params) =>
+          (
+            let start = params["start"].parseInt();
+            renderUserList(getLoggedInUser(), if start > 0: start else: 0)
+          )
+      ),
+      r("/pm/?@start?",
+        (params: Params) =>
+          (
+            let start = params["start"].parseInt();
+            renderPrivmsgList(getLoggedInUser(), if start > 0: start else: 0)
           )
       ),
       r("/t/@id/?s?/?@start?",
@@ -162,3 +182,5 @@ proc render(): VNode =
 
 window.onPopState = onPopState
 setRenderer render
+
+include russian

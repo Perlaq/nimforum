@@ -138,9 +138,9 @@ when defined(js):
                 )
                 if recaptchaSiteKey.isSome:
                   tdiv(id="recaptcha"):
-                    tdiv(class="g-recaptcha",
+                    tdiv(class="h-captcha",
                          "data-sitekey"=recaptchaSiteKey.get())
-                    script(src="https://www.google.com/recaptcha/api.js")
+                    script(src="https://hcaptcha.com/1/api.js")
           tdiv(class="modal-footer"):
             if state.sent:
               span(class="text-success"):

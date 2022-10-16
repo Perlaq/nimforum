@@ -9,7 +9,7 @@ type
 when defined(js):
   import times, json, sugar
   include karax/prelude
-  import karax / [kajax, kdom]
+  import karax / [kajax, kdom, i18n]
 
   import login, signup, usermenu
   import karaxutils
@@ -96,7 +96,7 @@ when defined(js):
           section(class="navbar-section"):
             tdiv(class="input-group input-inline"):
               input(class="search-input input-sm",
-                    `type`="search", placeholder="Search",
+                    `type`="search", placeholder=(i18n"Search" % []),
                     id="search-box", required="required",
                     onKeyDown=onKeyDown)
             if state.loading:
@@ -105,11 +105,11 @@ when defined(js):
               button(id="signup-btn", class="btn btn-primary btn-sm",
                      onClick=(e: Event, n: VNode) => state.signupModal.show()):
                 italic(class="fas fa-user-plus")
-                text " Sign up"
+                text (i18n" Sign up" % [])
               button(id="login-btn", class="btn btn-primary btn-sm",
                      onClick=(e: Event, n: VNode) => state.loginModal.show()):
                 italic(class="fas fa-sign-in-alt")
-                text " Log in"
+                text (i18n" Log in" % [])
             else:
               render(state.userMenu, user.get())
 

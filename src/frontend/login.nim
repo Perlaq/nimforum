@@ -4,7 +4,7 @@ when defined(js):
   import jsffi except `&`
 
   include karax/prelude
-  import karax / [kajax, kdom]
+  import karax / [kajax, kdom, i18n]
 
   import error, resetpassword
   import karaxutils
@@ -66,32 +66,32 @@ when defined(js):
               "aria-label"="close",
               onClick=(ev: Event, n: VNode) => onClose(ev, n, state))
             tdiv(class="modal-title h5"):
-              text "Log in"
+              text (i18n"Log in" % [])
           tdiv(class="modal-body"):
             tdiv(class="content"):
               form(id="login-form",
                    onKeyDown=(ev: Event, n: VNode) => onKeyDown(ev, n, state)):
-                genFormField(state.error, "username", "Username", "text", false)
+                genFormField(state.error, "username", $(i18n"Username" % []), "text", false)
                 genFormField(
                   state.error,
                   "password",
-                  "Password",
+                  $(i18n"Password" % []),
                   "password",
                   true
                 )
               a(href="", onClick=(e: Event, n: VNode) =>
                   (state.resetPasswordModal.show(); e.preventDefault())):
-                text "Reset your password"
+                text (i18n"Reset your password" % [])
           tdiv(class="modal-footer"):
             button(class=class(
                     {"loading": state.loading},
                     "btn btn-primary"
                    ),
                    onClick=(ev: Event, n: VNode) => onLogInClick(ev, n, state)):
-              text "Log in"
+              text (i18n"Log in" % [])
             button(class="btn",
                    onClick=(ev: Event, n: VNode) =>
                     (state.onSignUp(); state.shown = false)):
-              text "Create account"
+              text (i18n"Create account" % [])
 
       render(state.resetPasswordModal, recaptchaSiteKey)

@@ -70,7 +70,7 @@ when defined(js):
       state.post = post
       state.rawContent = none[kstring]()
       var params = @[("id", $post.id)]
-      let uri = makeUri("post.rst", params)
+      let uri = makeUri("post.md", params)
       ajaxGet(uri, @[], (s: int, r: kstring) => onRawContent(s, r, state))
 
       return buildHtml(tdiv(class="loading"))

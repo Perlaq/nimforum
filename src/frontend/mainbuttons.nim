@@ -3,7 +3,7 @@ import user
 
 when defined(js):
   include karax/prelude
-  import karax / [kdom]
+  import karax / [kdom, i18n]
 
   import karaxutils, user, categorypicker, category
 
@@ -49,10 +49,10 @@ when defined(js):
             let active = btn.url == window.location.href
             a(id=btn.id, href=btn.url):
               button(class=class({"btn-primary": active, "btn-link": not active}, "btn")):
-                text btn.name
+                text (i18n(btn.name) % [])
         section(class="navbar-section"):
           if currentUser.isSome():
             a(id="new-thread-btn", href=makeUri("/newthread"), onClick=anchorCB):
               button(class="btn btn-secondary"):
                 italic(class="fas fa-plus")
-                text " New Thread"
+                text (i18n" New Thread" % [])

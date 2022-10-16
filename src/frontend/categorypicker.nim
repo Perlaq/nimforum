@@ -37,7 +37,7 @@ when defined(js):
           state.list = some(list)
 
         if state.selectedCategoryID > state.list.get().categories.len():
-          state.selectedCategoryID = 0
+          state.selectedCategoryID = 1
 
   proc loadCategories(state: CategoryPicker) =
     if not state.loading:
@@ -68,7 +68,7 @@ when defined(js):
   proc newCategoryPicker*(onCategoryChange=nullCategoryChange, onAddCategory=nullAddCategory): CategoryPicker =
     result = CategoryPicker(
       list: none[CategoryList](),
-      selectedCategoryID: 0,
+      selectedCategoryID: 1,
       loading: false,
       addEnabled: false,
       status: Http200,

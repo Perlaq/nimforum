@@ -3,7 +3,7 @@ when defined(js):
   import sugar
 
   include karax/prelude
-  import karax/[vstyles]
+  import karax/[vstyles, i18n]
   import karaxutils
 
   import user
@@ -58,9 +58,13 @@ when defined(js):
           li(class="menu-item"):
             a(id="myprofile-btn",
               href=makeUri("/profile/" & user.name)):
-              text "My profile"
+              text (i18n"My profile" % [])
+          li(class="menu-item"):
+            a(id="users-btn",
+              href=makeUri("/pm")):
+              text (i18n"PM" % [])
           li(class="menu-item c-hand"):
             a(id="logout-btn",
               onClick = (e: Event, n: VNode) =>
                 (state.shown=false; state.onLogout())):
-              text "Logout"
+              text (i18n"Logout" % [])

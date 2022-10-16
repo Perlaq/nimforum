@@ -17,8 +17,9 @@ import options
 import auth, email, utils, buildcss
 
 import frontend/threadlist except User
+import frontend/userlist except User
 import frontend/[
-  category, postlist, error, header, post, profile, user, karaxutils, search
+  category, postlist, pmlist, error, header, post, profile, user, karaxutils, search
 ]
 
 from htmlgen import tr, th, td, span, input
@@ -169,7 +170,8 @@ proc checkLoggedIn(c: TForumData) =
               c.userid)
 
   else:
-    warn("SID not found in sessions. Assuming logged out.")
+    #warn("SID not found in sessions. Assuming logged out.")
+    discard
 
 proc incrementViews(threadId: int) =
   const query = sql"update thread set views = views + 1 where id = ?"
@@ -251,7 +253,7 @@ proc initialise() =
 
   config = loadConfig()
   if len(config.recaptchaSecretKey) > 0 and len(config.recaptchaSiteKey) > 0:
-    captcha = initReCaptcha(config.recaptchaSecretKey, config.recaptchaSiteKey)
+    captcha = initReCaptcha(config.recaptchaSecretKey, config.recaptchaSiteKey, Hcaptcha)
   else:
     doAssert config.isDev, "Recaptcha required for production!"
     warn("No recaptcha secret key specified.")
@@ -399,15 +401,14 @@ proc selectThreadAuthor(threadId: int): User =
 
 proc selectThread(threadRow: seq[string], author: User): Thread =
   const postsQuery =
-    sql"""select max(position), min(strftime('%s', creation)) from post
-          where thread = ?;"""
+    sql"""select position, strftime('%s', creation) from post
+          where thread = ? order by position desc limit 1;"""
   const usersListQuery =
     sql"""
-      select u.id, name, email, strftime('%s', lastOnline),
-             strftime('%s', previousVisitAt), status, u.isDeleted,
-             count(*)
+      select distinct u.id, name, email, strftime('%s', lastOnline),
+             strftime('%s', previousVisitAt), status, u.isDeleted
       from person u, post p where p.author = u.id and p.thread = ?
-      group by name order by count(*) desc limit 5;
+      order by p.position desc limit 5;
     """
 
   let posts = getRow(db, postsQuery, threadRow[0])
@@ -542,6 +543,9 @@ proc updatePost(c: TForumData, postId: int, content: string,
   if not validateMarkdown(c, content):
     raise newForumError("Message needs to be valid Markdown", @["msg"])
 
+  if content.strip().len > 10000:
+    raise newForumError("Message is too long")
+
   # Update post.
   # - We create a new postRevision entry for our edit.
   exec(
@@ -619,8 +623,13 @@ proc executeNewThread(c: TForumData, subject, msg, categoryID: string): (int64, 
                   result[0], subject)
   result[1] = executeReply(c, result[0].int, msg, none[int]())
   discard tryExec(db, crud(crUpdate, "thread", "lastPost"), result[1].int, result[0].int)
+  #discard tryExec(db, sql"insert into post_fts(post_fts) values('optimize')")
+  #discard tryExec(db, sql"insert into thread_fts(thread_fts) values('optimize')")
+
+proc optimizeFTS() {.async.} =
+  #merge all existing index b-trees
   discard tryExec(db, sql"insert into post_fts(post_fts) values('optimize')")
-  discard tryExec(db, sql"insert into post_fts(thread_fts) values('optimize')")
+  discard tryExec(db, sql"insert into thread_fts(thread_fts) values('optimize')")
 
 proc executeLogin(c: TForumData, username, password: string): string =
   ## Performs a login with the specified details.
@@ -696,7 +705,7 @@ proc executeRegister(c: TForumData, name, pass, antibot, userIp,
   exec(db, sql"""
     INSERT INTO person(name, password, email, salt, status, lastOnline)
     VALUES (?, ?, ?, ?, ?, DATETIME('now'))
-  """, name, password, email, salt, $EmailUnconfirmed)
+  """, name, password, email, salt, $Moderated)
 
 proc executeLike(c: TForumData, postId: int) =
   # Verify the post exists and doesn't belong to the current user.
@@ -785,6 +794,8 @@ proc executeDeleteThread(c: TForumData, threadId: int) =
 
   # Set the `isDeleted` flag.
   exec(db, crud(crUpdate, "thread", "isDeleted"), "1", threadId)
+  exec(db, sql"""update category set threads = threads-1 where id in 
+             (select category from thread where id = ?);""", threadId)
 
 proc executeDeleteUser(c: TForumData, username: string) =
   # Verify that the current user has the permissions to do this.
@@ -854,7 +865,7 @@ routes:
       sql"""
         select id, name, description, color, threads
         from category
-        where position >= 0
+        where position >= 0 and id != 7
         order by position
         limit 100;
       """
@@ -865,6 +876,103 @@ routes:
         id: data[0].getInt, name: data[1], description: data[2], color: data[3], numTopics: data[4].parseInt
       )
       list.categories.add(category)
+
+    resp $(%list), "application/json"
+
+  get "/users.json":
+    const count = sql("SELECT count(*) FROM person")
+    let total = getValue(db, count).parseInt
+    
+    var
+      start = getInt(@"start", 0)
+    if start > total: start = 0
+    
+    const usersQuery =
+      sql"""
+        select id, name, email, strftime('%s', lastOnline),
+           strftime('%s', previousVisitAt), status, isDeleted
+        from person
+        order by id
+        limit ?, 40;
+      """
+
+    var list = UserList(users: @[])
+    for data in getAllRows(db, usersQuery, start):
+      let user = selectUser(data, avatarSize=80)
+      list.users.add(user)
+      
+    list.pages = total
+
+    resp $(%list), "application/json"
+    
+    
+  get "/pm.json":
+    createTFD()
+    if not c.loggedIn():
+      let err = PostError(
+        errorFields: @[],
+        message: "Not logged in."
+      )
+      resp Http401, $(%err), "application/json"
+
+    let count =
+      if c.rank >= Admin:
+        sql("SELECT count(*) FROM privmsgs")
+      else:
+        sql("SELECT count(*) FROM privmsgs WHERE author = ? OR recipient = ?")
+    let total =
+      if c.rank >= Admin:
+        getValue(db, count).parseInt
+      else:
+        getValue(db, count, c.userId, c.userId).parseInt
+
+    var
+      start = getInt(@"start", 0)
+    if start > total: start = 0
+    
+    let privmsgsQuery =
+      if c.rank >= Admin:
+        sql"""
+          select pm.id, pm.author, pm.content, pm.subject, strftime('%s', pm.creation), 
+             u.id, u.name, u.email, strftime('%s', u.lastOnline),
+             strftime('%s', u.previousVisitAt), u.status,
+             u.isDeleted, ut.name
+          from privmsgs pm, person u, person ut
+          where pm.author = u.id AND pm.recipient = ut.id
+          order by pm.id desc
+          limit ?, 20;
+        """
+      else:
+        sql"""
+          select pm.id, pm.author, pm.content, pm.subject, strftime('%s', pm.creation), 
+             u.id, u.name, u.email, strftime('%s', u.lastOnline),
+             strftime('%s', u.previousVisitAt), u.status,
+             u.isDeleted, ut.name
+          from privmsgs pm, person u, person ut
+           where (pm.author = ? OR pm.recipient = ?) AND pm.author = u.id AND pm.recipient = ut.id
+          order by pm.id desc
+          limit ?, 20;
+        """
+
+    var list = PrivmsgList(privmsgs: @[])
+    
+    let rows =
+      if c.rank >= Admin:
+        getAllRows(db, privmsgsQuery, start)
+      else:
+        getAllRows(db, privmsgsQuery, c.userId, c.userId, start)
+      
+    for data in rows:
+      list.privmsgs.add(Privmsg(
+        id: data[0].parseInt(),
+        author: selectUser(data[5..11], avatarSize=80),
+        creation: data[4].parseInt(),
+        content: data[2].markdownToHtml(),
+        topic: data[3],
+        recipient: data[12]
+      ))
+      
+    list.pages = total
 
     resp $(%list), "application/json"
 
@@ -900,7 +1008,7 @@ routes:
                   u.id = (
                     select p.author from post p
                     where p.thread = t.id
-                    order by p.author
+                    order by p.position
                     limit 1
                   )
             order by $# modified desc limit ?, ?;"""
@@ -950,7 +1058,7 @@ routes:
                   u.isDeleted
            from post p, person u
            where u.id = p.author and p.thread = ? and position between ? and ?
-           order by p.id"""
+           order by p.position"""
       )
 
     var list = PostList(
@@ -1015,7 +1123,28 @@ routes:
 
     resp $(%list), "application/json"
 
-  get "/post.rst":
+  get "/unread/@id":
+    cond "id" in request.params
+    createTFD()
+    const postsNewQuery =
+      sql"""select p.id, p.position from person u, post p
+          where p.thread = ? and u.id = ? and
+          p.creation > u.previousVisitAt order by p.creation limit 1;"""
+    let postsNew = getRow(db, postsNewQuery, @"id", c.userid)
+    var read, firstUnread = 0
+    if postsNew[0].len != 0:
+      read = postsNew[1].parseInt
+      firstUnread = postsNew[0].parseInt
+      var page = (read div postPerPage())*postPerPage()
+      var threadId = @"id"
+      if page > 0:
+        redirect uri(fmt"/t/{threadId}/s/{page}#{firstUnread}")
+      else:
+        redirect uri(fmt"/t/{threadId}#{firstUnread}")
+    else:
+      redirect uri("/t/" & @"id")
+
+  get "/post.md":
     createTFD()
     let postId = getInt(@"id", -1)
     cond postId != -1
@@ -1033,30 +1162,21 @@ routes:
     if content.len == 0:
       resp Http404, "Post not found"
     else:
-      resp content, "text/x-rst"
+      resp content, "text/markdown"
 
   get "/profile.json":
     createTFD()
     var
       username = @"username"
 
-    # Have to do this because SQLITE doesn't support `in` queries with
-    # multiple columns :/
-    # TODO: Figure out a better way. This is horrible.
-    let creatorSubquery = """
-        (select $1 from post p
-         where p.thread = t.id
-         order by p.id asc limit 1)
-    """
-
     let threadsFrom = """
       from thread t, post p
-      where ? in $1 and p.id in $2
-    """ % [creatorSubquery % "author", creatorSubquery % "id"]
+      where p.thread = t.id and p.position = 0 and p.author = ?
+    """
 
     let postsFrom = """
-      from post p, person u, thread t
-      where u.id = p.author and p.thread = t.id and u.name = ?
+      from post p,thread t
+      where p.thread = t.id and p.author = ?
     """
 
     let postsQuery = sql("""
@@ -1069,7 +1189,7 @@ routes:
     let userQuery = sql("""
       select id, name, email, strftime('%s', lastOnline),
              strftime('%s', previousVisitAt), status, isDeleted,
-             strftime('%s', creation), id
+             strftime('%s', creation), id, posts, threads
       from person
       where name = ? and isDeleted = 0
     """)
@@ -1081,21 +1201,19 @@ routes:
 
     let userRow = db.getRow(userQuery, username)
 
-    let userID = userRow[^1]
+    let userID = userRow[^3]
     if userID.len == 0:
       halt()
 
     profile.user = selectUser(userRow, avatarSize=200)
-    profile.joinTime = userRow[^2].parseInt()
-    profile.postCount =
-      getValue(db, sql("select posts from person where id = ?"), userID).parseInt()
-    profile.threadCount =
-      getValue(db, sql("select threads from person where id = ?"), userID).parseInt()
+    profile.joinTime = userRow[^4].parseInt()
+    profile.postCount = userRow[^2].parseInt()
+    profile.threadCount = userRow[^1].parseInt()
 
     if c.rank >= Admin or c.username == username:
       profile.email = some(userRow[2])
 
-    for row in db.getAllRows(postsQuery, username):
+    for row in db.getAllRows(postsQuery, userID):
       profile.posts.add(
         PostLink(
           creation: row[1].parseInt(),
@@ -1109,9 +1227,10 @@ routes:
     let threadsQuery = sql("""
       select t.id, t.name, strftime('%s', p.creation), p.id
       $1
-      order by t.id desc
-      limit 10;
+      order by p.id
+      desc limit 10;
     """ % threadsFrom)
+
     for row in db.getAllRows(threadsQuery, userID):
       profile.threads.add(
         PostLink(
@@ -1363,6 +1482,76 @@ routes:
     try:
       let res = executeNewThread(c, subject, msg, categoryID)
       resp Http200, $(%[res[0], res[1]]), "application/json"
+      await optimizeFTS()
+    except ForumError as exc:
+      resp Http400, $(%exc.data), "application/json"
+
+  post "/newpm":
+    createTFD()
+    if not c.loggedIn():
+      let err = PostError(
+        errorFields: @[],
+        message: "Not logged in."
+      )
+      resp Http401, $(%err), "application/json"
+
+    let formData = request.formData
+    cond "msg" in formData
+    cond "subject" in formData
+    cond "recipient" in formData
+
+    let msg = formData["msg"].body
+    let subject = formData["subject"].body
+    let recipient = formData["recipient"].body
+
+    try:
+      const
+        query = sql"""
+          insert into privmsgs(author, ip, content, subject, creation, recipient)  values (?, ?, ?, ?, DATETIME('now'), ?)
+          """
+
+      assert c.loggedIn()
+
+      if not canPost(c.rank):
+        case c.rank
+        of EmailUnconfirmed:
+          raise newForumError("You need to confirm your email before you can post")
+        else:
+          raise newForumError("You are not allowed to post")
+
+      if subject.len <= 2:
+        raise newForumError("Subject is too short", @["subject"])
+      if subject.len > 100:
+        raise newForumError("Subject is too long", @["subject"])
+        
+      let userid = getValue(
+        db,
+        sql"select id from person where name = ? collate nocase and isDeleted = 0",
+        recipient)
+      
+      if userid.len == 0:
+        raise newForumError("Username not exists", @["recipient"])
+
+      if msg.len == 0:
+        raise newForumError("Message is empty", @["msg"])
+      if msg.len > 4096:
+        raise newForumError("Message is too long", @["msg"])
+
+      const query3600 =
+        sql("SELECT count(*) FROM privmsgs where author = ? and " &
+        "(strftime('%s', 'now') - strftime('%s', creation)) < 3600 limit 15")
+      let last3600s = getValue(db, query3600, c.userId).parseInt
+      if last3600s > 10:
+        raise newForumError("You're posting too fast!", @["msg"])
+
+      if not validateMarkdown(c, msg):
+        raise newForumError("Message needs to be valid Markdown", @["msg"])
+
+      let res = tryInsertID(db, query, c.userId, c.req.ip, msg, subject, userid).int
+      if res < 0:
+        raise newForumError("Subject already exists", @["subject"])
+
+      resp Http200, $(%[res]), "application/json"
     except ForumError as exc:
       resp Http400, $(%exc.data), "application/json"
 
@@ -1646,6 +1835,13 @@ routes:
   get "/about/rst.html":
     let content = readFile("public/rst.rst")
     resp content.rstToHtml()
+    
+  get "/about/codeofconduct.html":
+    let content = readFile("public/codeofconduct.rst") %
+      {
+        "name": config.name
+      }.newStringTable()
+    resp content.rstToHtml()
 
   get "/threadActivity.xml":
     createTFD()
@@ -1657,13 +1853,13 @@ routes:
 
   get "/search.json":
     cond "q" in request.params
-    let q = @"q"
+    let q = @"q".replace(")", "").replace("(", "")
     cond q.len > 0
 
     var results: seq[SearchResult] = @[]
 
     const queryFT = "fts.sql".slurp.sql
-    const count = 40
+    const count = 30
     let data = [
       q, q, $count, $0, q,
       q, $count, $0, q

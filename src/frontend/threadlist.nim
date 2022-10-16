@@ -30,7 +30,7 @@ proc isModerated*(thread: Thread): bool =
 when defined(js):
   import sugar
   include karax/prelude
-  import karax / [vstyles, kajax, kdom]
+  import karax / [vstyles, kajax, kdom, i18n]
 
   import karaxutils, error, user, mainbuttons, post
 
@@ -108,7 +108,7 @@ when defined(js):
         href=renderPostUrl(pos)):
         text act
 
-  proc genThread(pos: int, thread: Thread, isNew: bool, noBorder: bool, displayCategory=true): VNode =
+  proc genThread(pos: int, thread: Thread, isNew: bool, noBorder: bool, displayCategory=true, isUnseen: bool): VNode =
     let isOld = (getTime() - thread.creation.fromUnix).inWeeks > 2
     let isBanned = thread.author.rank.isBanned()
     result = buildHtml():
@@ -133,7 +133,12 @@ when defined(js):
             text thread.topic
           tdiv(class="show-sm" & class({"d-none": not displayCategory})):
             render(thread.category)
+          if isUnseen:
+            a(href=makeUri("/unread/" & $thread.id)):
+              italic(class="ml-1 far fa-envelope-open fa-xs",
+                title="Go to the first unread message")
 
+                  
         td(class="hide-sm" & class({"d-none": not displayCategory})):
           render(thread.category)
         genUserAvatars(thread.users)
@@ -182,7 +187,7 @@ when defined(js):
 
   proc getInfo(
     list: seq[Thread], i: int, currentUser: Option[User]
-  ): tuple[isLastUnseen, isNew: bool] =
+  ): tuple[isLastUnseen, isNew: bool, isUnseen: bool] =
     ## Determines two properties about a thread.
     ##
     ## * isLastUnseen - Whether this is the last thread that had new
@@ -200,7 +205,8 @@ when defined(js):
 
     return (
       isLastUnseen: isUnseen and (not isNextUnseen),
-      isNew: thread.creation > previousVisitAt
+      isNew: thread.creation > previousVisitAt,
+      isUnseen: isUnseen
     )
 
   proc genThreadList(currentUser: Option[User], categoryId: Option[int]): VNode =
@@ -225,22 +231,22 @@ when defined(js):
         table(class="table", id="threads-list"):
           thead():
             tr:
-              th(text "Topic")
-              th(class="hide-sm" & class({"d-none": not displayCategory})): text "Category"
-              th(class="thread-users"): text "Users"
-              th(class="centered-header"): text "Replies"
-              th(class="hide-sm centered-header"): text "Views"
-              th(class="centered-header"): text "Activity"
+              th(text (i18n"Topic" % []))
+              th(class="hide-sm" & class({"d-none": not displayCategory})): text (i18n"Category" % [])
+              th(class="thread-users"): text (i18n"Users" % [])
+              th(class="centered-header"): text (i18n"Replies" % [])
+              th(class="hide-sm centered-header"): text (i18n"Views" % [])
+              th(class="centered-header"): text (i18n"Activity" % [])
           tbody():
             for i in 0 ..< list.threads.len:
               let thread = list.threads[i]
               if not visibleTo(thread, currentUser): continue
 
               let isLastThread = i+1 == list.threads.len
-              let (isLastUnseen, isNew) = getInfo(list.threads, i, currentUser)
+              let (isLastUnseen, isNew, isUnseen) = getInfo(list.threads, i, currentUser)
               genThread(i+1, thread, isNew,
                         noBorder=isLastUnseen or isLastThread,
-                        displayCategory=displayCategory)
+                        displayCategory=displayCategory, isUnseen)
               if isLastUnseen and (not isLastThread):
                 tr(class="last-visit-separator"):
                   td(colspan="6"):

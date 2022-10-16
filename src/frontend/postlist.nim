@@ -18,7 +18,7 @@ when defined(js):
   import jsffi except `&`
 
   include karax/prelude
-  import karax / [kajax, kdom]
+  import karax / [kajax, kdom, i18n]
 
   import karaxutils, error, replybox, editbox, postbutton, delete
   import categorypicker
@@ -167,6 +167,21 @@ when defined(js):
   proc onReplyClick(e: Event, n: VNode, p: Option[Post]) =
     state.replyingTo = p
     state.replyBox.show()
+    
+  proc onMDContent(httpStatus: int, response: kstring, author: string) =
+    state.loading = false
+    state.status = httpStatus.HttpCode
+    if state.status != Http200: return
+    let rawContent = ">" & author & (i18n" wrote" % []) & 
+      ":\n>\n>" & ($response).replace("\n","\n>") & "\n\n"
+    state.replyBox.setText(state.replyBox.getText & $rawContent)
+    dom.document.getElementById("reply-textarea").value = $(state.replyBox.getText)
+    
+  proc onQuoteClick(e: Event, n: VNode, id: int, author: string) =
+    var params = @[("id", $id)]
+    let uri = makeUri("post.md", params)
+    ajaxGet(uri, @[], (s: int, r: kstring) => onMDContent(s, r, author))
+    state.replyBox.show()
 
   proc onEditClick(e: Event, n: VNode, p: Post) =
     state.editing = some(p)
@@ -215,7 +230,7 @@ when defined(js):
       loggedIn and currentUser.get().rank in {Admin, Moderator}
 
     result = buildHtml():
-      tdiv():
+      tdiv(class="d-inline-block"):
         if authoredByUser or canChangeCategory:
           render(state.categoryPicker, currentUser, compact=false)
         else:
@@ -251,11 +266,16 @@ when defined(js):
             button(class="btn"):
               italic(class="far fa-flag")
 
+          tdiv(class="quote-button"):
+            button(class="btn", onClick=(e: Event, n: VNode) =>
+                   onQuoteClick(e, n, post.id, post.author.name)):
+              italic(class="fas fa-quote-left")
+
           tdiv(class="reply-button"):
             button(class="btn", onClick=(e: Event, n: VNode) =>
                    onReplyClick(e, n, some(post))):
               italic(class="fas fa-reply")
-              text " Reply"
+              text (i18n" Reply" % [])
 
   proc genPost(
     post: Post, thread: Thread, currentUser: Option[User], highlight: bool
@@ -364,14 +384,14 @@ when defined(js):
             if n<=totalReplies and n>=(current+perPage div 2) and n<=(current+perPage*3):
               a(class="chip",
                 href=makeUri("/t/" & $threadId & "/s/" & $n)):
-                text $(n div perPage)
+                text $(n div perPage + 1)
             elif n>=0 and n<=(current-perPage div 2) and n>=(current-perPage*3):
               a(class="chip",
                 href=makeUri("/t/" & $threadId & "/s/" & $n)):
-                text $(n div perPage)
+                text $(n div perPage + 1)
             elif n>=0 and n==current:
               span(class="chip active"):
-                text $(n div perPage)
+                text $(n div perPage + 1)
 
 
           a(class="chip",
@@ -429,12 +449,18 @@ when defined(js):
           if list.thread.isSolved:
             italic(class="fas fa-check-square fa-xs",
                    title="Thread has a solution")
-            text "Solved"
-          tdiv(id="thread-subtitle"):
-            tdiv(class="subtitle-cell"):
-              genCategories(list.thread, currentUser)
-            tdiv(class="subtitle-cell"):
-              genLastPost(list.thread)
+            text "Solved" 
+          genCategories(list.thread, currentUser)
+          tdiv(class="d-inline-block"):
+            genLastPost(list.thread)
+            a(class="category-status",
+              href=("#thread-buttons")):
+              button(class="plus-btn btn btn-link"):
+                italic(class="fas fa-angle-double-down")
+            a(class="category-status",
+              href=makeUri("/c/" & $list.thread.category.id)):
+              button(class="plus-btn btn btn-link"):
+                italic(class="fas fa-list-ul")
         tdiv(class="posts"):
           var prevPost: Option[Post] = none[Post]()
           for i, post in list.posts:
@@ -444,6 +470,7 @@ when defined(js):
                   tdiv(class="post-content category-description"):
                     text "post " & $post.id & " from " &
                       post.author.name & " is hidden"
+              continue
             if post.isDeleted:
               tdiv(class="post",  id = $post.id):
                 tdiv(class="post-main"):
@@ -468,7 +495,7 @@ when defined(js):
                    onClick=(e: Event, n: VNode) =>
                          onReplyClick(e, n, none[Post]())):
               italic(class="fas fa-reply")
-              text " Reply"
+              text (i18n" Reply" % [])
 
             render(state.lockButton, list.thread, currentUser)
             render(state.pinButton, list.thread, currentUser)

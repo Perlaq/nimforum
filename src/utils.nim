@@ -1,5 +1,5 @@
 import asyncdispatch, smtp, strutils, json, os, rst, rstgen, xmltree, strtabs,
-  htmlparser, streams, parseutils, options, logging, markdown
+  htmlparser, streams, parseutils, options, logging, markdown, smiles, nre
 from times import getTime, utc, format
 
 # Used to be:
@@ -190,6 +190,6 @@ proc rstToHtml*(content: string): string =
 
 proc markdownToHtml*(content: string): string =
   try:
-    result = markdown(content, config=initGfmConfig())
+    result = markdown(content, config=initGfmConfig()).replaceSmiles()
   except:
     warn("Could not parse markdown.")

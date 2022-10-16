@@ -5,7 +5,7 @@ import category
 when defined(js):
   import sugar
   include karax/prelude
-  import karax / [vstyles, kajax]
+  import karax / [vstyles, kajax, i18n]
 
   import karaxutils, error, user, mainbuttons, addcategorymodal
 
@@ -62,7 +62,7 @@ when defined(js):
 
   proc renderCategoryHeader*(currentUser: Option[User]): VNode =
     result = buildHtml(tdiv(id="add-category")):
-      text "Category"
+      text (i18n"Category" % [])
       if currentUser.isAdmin():
         button(class="plus-btn btn btn-link",
               onClick=(ev: Event, n: VNode) => (
@@ -91,7 +91,7 @@ when defined(js):
             tr:
               th:
                 renderCategoryHeader(currentUser)
-              th(text "Topics")
+              th(text (i18n"Topics" % []))
           tbody():
             for i in 0 ..< list.categories.len:
               let category = list.categories[i]

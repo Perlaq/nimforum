@@ -38,7 +38,7 @@ when defined(js):
         p(class="empty-subtitle"):
           text "Please report this issue to us so we can fix it!"
         tdiv(class="empty-action"):
-          a(href="https://github.com/nim-lang/nimforum/issues", target="_blank"):
+          a(href="https://github.com/Perlaq/nimforum", target="_blank"):
             button(class="btn btn-primary"):
               text "Report issue"
 
